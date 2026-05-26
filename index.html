@@ -196,6 +196,19 @@ mark{background:#fef9c3;border-radius:2px;padding:0 2px;}
 .spinner{width:44px;height:44px;border:4px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite;}
 @keyframes spin{to{transform:rotate(360deg);}}
 
+/* ── Login ── */
+.login-wrap{display:flex;align-items:center;justify-content:center;min-height:calc(100vh - 62px);padding:24px;}
+.login-card{background:#fff;border-radius:16px;padding:44px 36px 36px;box-shadow:0 4px 32px rgba(0,0,0,.12);width:100%;max-width:360px;text-align:center;}
+.login-logo{font-size:52px;margin-bottom:10px;}
+.login-card h2{font-size:18px;color:var(--navy);font-weight:700;margin-bottom:4px;}
+.login-card p{font-size:12px;color:var(--sub);margin-bottom:28px;line-height:1.7;}
+.login-fi{width:100%;border:1.5px solid var(--border);border-radius:8px;padding:12px 14px;font-size:16px;outline:none;font-family:inherit;margin-bottom:12px;transition:border-color .15s,box-shadow .15s;background:#fff;}
+.login-fi:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(37,99,235,.08);}
+.login-btn{width:100%;padding:13px;background:var(--navy);color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;transition:background .15s;margin-top:4px;}
+.login-btn:hover{background:#16305a;}
+.login-err{color:var(--red);font-size:13px;margin-top:10px;display:none;}
+.role-badge{font-size:11px;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.3);border-radius:12px;padding:3px 10px;color:#e2e8f0;letter-spacing:.04em;}
+
 /* ── Edit Modal ── */
 .modal-ov{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:2000;overflow-y:auto;padding:20px;}
 .modal-ov.open{display:block;}
@@ -225,10 +238,11 @@ mark{background:#fef9c3;border-radius:2px;padding:0 2px;}
 
 <!-- ── Header ── -->
 <header>
-  <button class="hdr-btn" onclick="showView('home')">🏠 首頁</button>
+  <button class="hdr-btn" id="hdr-home" onclick="showView('home')" style="display:none">🏠 首頁</button>
   <h1>📋 承攬商進場管理系統</h1>
   <span class="subtitle">大豐環保科技股份有限公司</span>
-  <button class="hdr-btn" onclick="showView('records')">📂 進場紀錄</button>
+  <span class="role-badge" id="hdr-role" style="display:none"></span>
+  <button class="hdr-btn" id="hdr-logout" onclick="doLogout()" style="display:none">登出</button>
 </header>
 
 <!-- ── Step bar ── -->
@@ -249,6 +263,23 @@ mark{background:#fef9c3;border-radius:2px;padding:0 2px;}
 <!-- ── Main ── -->
 <div id="main">
 
+<!-- ════ View: Login ════ -->
+<div id="v-login">
+  <div class="login-wrap">
+    <div class="login-card">
+      <div class="login-logo">🏭</div>
+      <h2>承攬商進場管理系統</h2>
+      <p>大豐環保科技股份有限公司<br>請輸入帳號及密碼以繼續</p>
+      <input class="login-fi" id="login-user" placeholder="帳號" autocomplete="username"
+             onkeydown="if(event.key==='Enter')document.getElementById('login-pass').focus()"/>
+      <input class="login-fi" id="login-pass" type="password" placeholder="密碼" autocomplete="current-password"
+             onkeydown="if(event.key==='Enter')doLogin()"/>
+      <button class="login-btn" onclick="doLogin()">登入</button>
+      <div class="login-err" id="login-err">帳號或密碼錯誤，請重新輸入</div>
+    </div>
+  </div>
+</div>
+
 <!-- ════ View: Home ════ -->
 <div id="v-home">
   <div class="home-banner">
@@ -262,7 +293,7 @@ mark{background:#fef9c3;border-radius:2px;padding:0 2px;}
       <div class="hc-desc">新進承攬商依序填寫危害告知確認書、安衛管理切結書及作業許可申請書，完成電子簽名後送出留底</div>
       <div class="hc-btn">開始填寫 →</div>
     </div>
-    <div class="home-card" onclick="showView('records')">
+    <div class="home-card" id="card-records" onclick="showView('records')">
       <div class="hc-icon">📂</div>
       <div class="hc-title">進場紀錄查詢</div>
       <div class="hc-desc">查詢、列印或管理所有已提交的承攬商進場申請紀錄，支援關鍵字搜尋及 CSV 匯出功能</div>
@@ -677,6 +708,47 @@ async function apiGet(params){
 }
 
 // ════════════════════════════════════════════════
+//  Auth（帳號密碼可在此修改）
+// ════════════════════════════════════════════════
+const USERS = {
+  admin: { pass: 'admin', role: 'admin' },
+  guest: { pass: 'guest', role: 'guest' },
+};
+let currentRole = null;
+
+function doLogin(){
+  const u = (document.getElementById('login-user').value || '').trim().toLowerCase();
+  const p = document.getElementById('login-pass').value;
+  const user = USERS[u];
+  const errEl = document.getElementById('login-err');
+  if(!user || user.pass !== p){
+    errEl.style.display = 'block';
+    document.getElementById('login-pass').value = '';
+    document.getElementById('login-pass').focus();
+    return;
+  }
+  errEl.style.display = 'none';
+  currentRole = user.role;
+  const isAdmin = currentRole === 'admin';
+  document.getElementById('hdr-home').style.display   = '';
+  document.getElementById('hdr-logout').style.display = '';
+  document.getElementById('hdr-role').style.display   = '';
+  document.getElementById('hdr-role').textContent     = isAdmin ? '管理者' : '承攬商';
+  document.getElementById('card-records').style.display = isAdmin ? '' : 'none';
+  showView('home');
+}
+
+function doLogout(){
+  currentRole = null;
+  document.getElementById('login-user').value = '';
+  document.getElementById('login-pass').value = '';
+  document.getElementById('hdr-home').style.display   = 'none';
+  document.getElementById('hdr-logout').style.display = 'none';
+  document.getElementById('hdr-role').style.display   = 'none';
+  showView('login');
+}
+
+// ════════════════════════════════════════════════
 //  Toast
 // ════════════════════════════════════════════════
 function toast(msg, type=''){
@@ -690,7 +762,9 @@ function toast(msg, type=''){
 //  View routing
 // ════════════════════════════════════════════════
 function showView(name){
-  ['home','wizard','success','records','rec-detail'].forEach(v=>{
+  if(name !== 'login' && !currentRole){ showView('login'); return; }
+  if(name === 'records' && currentRole !== 'admin'){ toast('此帳號無查詢紀錄的權限','bad'); return; }
+  ['login','home','wizard','success','records','rec-detail'].forEach(v=>{
     document.getElementById('v-'+v).style.display = 'none';
   });
   document.getElementById('v-'+name).style.display = '';
@@ -1750,6 +1824,7 @@ window.addEventListener('DOMContentLoaded', ()=>{
   buildCheckboxes();
   buildPPE();
   initSig();
+  showView('login');
 });
 
 window.addEventListener('resize', ()=>{
