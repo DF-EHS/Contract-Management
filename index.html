@@ -196,6 +196,14 @@ mark{background:#fef9c3;border-radius:2px;padding:0 2px;}
 .spinner{width:44px;height:44px;border:4px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite;}
 @keyframes spin{to{transform:rotate(360deg);}}
 
+/* ── Full-screen Signature ── */
+#sig-fullscreen{display:none;position:fixed;inset:0;z-index:9000;flex-direction:column;}
+#sig-fullscreen.open{display:flex;}
+.sig-fs-hdr{background:var(--navy);color:#fff;padding:10px 16px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-shrink:0;}
+.sig-fs-title{font-size:14px;font-weight:700;flex:1;text-align:center;}
+#sig-fs-body{flex:1;position:relative;overflow:hidden;background:#fafafa;}
+#sig-fs-canvas{position:absolute;inset:0;width:100%;height:100%;touch-action:none;cursor:crosshair;}
+
 /* ── Login ── */
 .login-wrap{display:flex;align-items:center;justify-content:center;min-height:calc(100vh - 62px);padding:24px;}
 .login-card{background:#fff;border-radius:16px;padding:44px 36px 36px;box-shadow:0 4px 32px rgba(0,0,0,.12);width:100%;max-width:360px;text-align:center;}
@@ -499,6 +507,7 @@ mark{background:#fef9c3;border-radius:2px;padding:0 2px;}
           </div>
           <div class="sig-tools">
             <button class="btn btn-sm" onclick="clearSig()">清除重簽</button>
+            <button class="btn btn-sm btn-primary" onclick="openSigFSMain()">⛶ 放大簽名</button>
           </div>
         </div>
 
@@ -1115,6 +1124,7 @@ function addWorker(){
     </div>
     <div class="sig-tools">
       <button class="btn btn-sm" onclick="clearWorkerSig(${id})">清除重簽</button>
+      <button class="btn btn-sm btn-primary" onclick="openSigFSWorker(${id})">⛶ 放大簽名</button>
     </div>`;
   container.appendChild(div);
   initWorkerCanvas(id);
@@ -1811,6 +1821,83 @@ async function saveEdit(){
 }
 
 // ════════════════════════════════════════════════
+//  Full-screen Signature
+// ════════════════════════════════════════════════
+let _sigFsCtx = null, _sigFsDrawing = false, _sigFsHasData = false, _sigFsCallback = null;
+
+function openSigFS(existingDataURL, onConfirm){
+  _sigFsCallback = onConfirm;
+  _sigFsHasData = false;
+  _sigFsDrawing = false;
+  document.getElementById('sig-fullscreen').classList.add('open');
+  requestAnimationFrame(()=>{
+    const body   = document.getElementById('sig-fs-body');
+    const canvas = document.getElementById('sig-fs-canvas');
+    canvas.width  = body.clientWidth;
+    canvas.height = body.clientHeight;
+    _sigFsCtx = canvas.getContext('2d');
+    _sigFsCtx.strokeStyle='#1e293b'; _sigFsCtx.lineWidth=2.5; _sigFsCtx.lineCap='round'; _sigFsCtx.lineJoin='round';
+    document.getElementById('sig-fs-hint').style.display = '';
+    if(existingDataURL){
+      const img = new Image();
+      img.onload = ()=>{ _sigFsCtx.drawImage(img,0,0,canvas.width,canvas.height); _sigFsHasData=true; document.getElementById('sig-fs-hint').style.display='none'; };
+      img.src = existingDataURL;
+    }
+  });
+}
+
+function clearSigFS(){
+  const c = document.getElementById('sig-fs-canvas');
+  _sigFsCtx.clearRect(0,0,c.width,c.height);
+  _sigFsHasData = false;
+  document.getElementById('sig-fs-hint').style.display = '';
+}
+
+function cancelSigFS(){
+  document.getElementById('sig-fullscreen').classList.remove('open');
+  _sigFsCallback = null;
+}
+
+function confirmSigFS(){
+  const c = document.getElementById('sig-fs-canvas');
+  const dataURL = _sigFsHasData ? c.toDataURL() : null;
+  document.getElementById('sig-fullscreen').classList.remove('open');
+  if(_sigFsCallback) _sigFsCallback(dataURL);
+  _sigFsCallback = null;
+}
+
+function openSigFSMain(){
+  const c = document.getElementById('sig-canvas');
+  openSigFS(sigHasData ? c.toDataURL() : null, (dataURL)=>{
+    sigCtx.clearRect(0,0,c.width,c.height);
+    if(dataURL){ const i=new Image(); i.onload=()=>{ sigCtx.drawImage(i,0,0,c.width,c.height); sigHasData=true; updateHint(); }; i.src=dataURL; }
+    else { sigHasData=false; updateHint(); }
+  });
+}
+
+function openSigFSWorker(id){
+  const c = document.getElementById('wsig-canvas-'+id);
+  openSigFS(workerStates[id]?.hasData ? c.toDataURL() : null, (dataURL)=>{
+    const ctx = workerStates[id].ctx;
+    ctx.clearRect(0,0,c.width,c.height);
+    if(dataURL){ const i=new Image(); i.onload=()=>{ ctx.drawImage(i,0,0,c.width,c.height); workerStates[id].hasData=true; markWorkerSig(id); }; i.src=dataURL; }
+    else { workerStates[id].hasData=false; document.getElementById('wsig-hint-'+id).style.display=''; }
+  });
+}
+
+function initSigFSEvents(){
+  const canvas = document.getElementById('sig-fs-canvas');
+  function pos(e){ const r=canvas.getBoundingClientRect(), s=e.touches?e.touches[0]:e; return [s.clientX-r.left, s.clientY-r.top]; }
+  canvas.addEventListener('mousedown',  e=>{ _sigFsDrawing=true; const [x,y]=pos(e); _sigFsCtx.beginPath(); _sigFsCtx.moveTo(x,y); });
+  canvas.addEventListener('mousemove',  e=>{ if(!_sigFsDrawing)return; const [x,y]=pos(e); _sigFsCtx.lineTo(x,y); _sigFsCtx.stroke(); _sigFsHasData=true; document.getElementById('sig-fs-hint').style.display='none'; });
+  canvas.addEventListener('mouseup',    ()=>_sigFsDrawing=false);
+  canvas.addEventListener('mouseleave', ()=>_sigFsDrawing=false);
+  canvas.addEventListener('touchstart', e=>{ e.preventDefault(); _sigFsDrawing=true; const [x,y]=pos(e); _sigFsCtx.beginPath(); _sigFsCtx.moveTo(x,y); },{passive:false});
+  canvas.addEventListener('touchmove',  e=>{ e.preventDefault(); if(!_sigFsDrawing)return; const [x,y]=pos(e); _sigFsCtx.lineTo(x,y); _sigFsCtx.stroke(); _sigFsHasData=true; document.getElementById('sig-fs-hint').style.display='none'; },{passive:false});
+  canvas.addEventListener('touchend',   ()=>_sigFsDrawing=false);
+}
+
+// ════════════════════════════════════════════════
 //  Init
 // ════════════════════════════════════════════════
 window.addEventListener('DOMContentLoaded', ()=>{
@@ -1820,6 +1907,7 @@ window.addEventListener('DOMContentLoaded', ()=>{
   buildCheckboxes();
   buildPPE();
   initSig();
+  initSigFSEvents();
   showView('login');
 });
 
@@ -1835,5 +1923,21 @@ window.addEventListener('resize', ()=>{
   }
 });
 </script>
+
+<!-- ── Full-screen Signature Overlay ── -->
+<div id="sig-fullscreen">
+  <div class="sig-fs-hdr">
+    <button class="hdr-btn" onclick="cancelSigFS()" style="background:rgba(220,38,38,.8);border-color:#dc2626">✕ 取消</button>
+    <span class="sig-fs-title">請在框內簽名</span>
+    <div style="display:flex;gap:8px">
+      <button class="hdr-btn" onclick="clearSigFS()">清除</button>
+      <button class="hdr-btn" onclick="confirmSigFS()" style="background:rgba(22,163,74,.85);border-color:#16a34a">✓ 完成</button>
+    </div>
+  </div>
+  <div id="sig-fs-body">
+    <canvas id="sig-fs-canvas"></canvas>
+    <div class="sig-hint" id="sig-fs-hint" style="font-size:15px;line-height:2.5">請在此處簽名</div>
+  </div>
+</div>
 </body>
 </html>
