@@ -72,6 +72,19 @@ header h1{font-size:16px;font-weight:700;letter-spacing:.5px;}
 .frow3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;}
 @media(max-width:520px){.frow,.frow3{grid-template-columns:1fr;}}
 
+/* ── 行動版優化 ── */
+@media(max-width:767px){
+  /* 修正 1：font-size ≥ 16px → 防止 iOS Safari 自動縮放，date picker 才能正常開啟 */
+  .fi,.fta,.fs{font-size:16px;}
+  /* 修正 4：讓 modal header/footer 固定，body 獨立捲動（iOS sticky 問題） */
+  .modal{max-height:92vh;display:flex;flex-direction:column;}
+  .mbody{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;}
+  .mhd,.mfoot{position:relative !important;flex-shrink:0;}
+  /* 修正 5：加大觸控按鈕高度 */
+  .btn{min-height:40px;}
+  .btn-sm{padding:7px 13px;font-size:12px;min-height:36px;}
+}
+
 /* ── Chip checkboxes ── */
 .chk-wrap{display:flex;flex-wrap:wrap;gap:7px;}
 .chk-chip{display:flex;align-items:center;gap:5px;padding:5px 12px;border:1.5px solid var(--border);border-radius:20px;cursor:pointer;background:#fff;font-size:12px;user-select:none;transition:all .15s;}
@@ -849,6 +862,8 @@ function goNext(cur){
   document.getElementById('step-'+nxt).style.display='';
   setStep(nxt);
   if(nxt===5) buildSummary();
+  if(nxt===2) resizeWorkerCanvases();
+  if(nxt===5) resizeMainSigCanvas();
   window.scrollTo(0,0);
 }
 
@@ -932,6 +947,38 @@ function g_(id){ return document.getElementById(id).value.trim(); }
 //  Signature pad
 // ════════════════════════════════════════════════
 let sigCtx, sigDrawing=false, sigHasData=false;
+
+// 修正 2：步驟切到2時，將各人員簽名畫布調整為實際可見寬度
+function resizeWorkerCanvases(){
+  Object.keys(workerStates).forEach(id => {
+    const canvas = document.getElementById('wsig-canvas-' + id);
+    const outer  = document.getElementById('wsig-outer-' + id);
+    if(!canvas || !outer) return;
+    const w = outer.clientWidth;
+    if(w > 0 && canvas.width !== w){
+      const snap = workerStates[id].hasData ? canvas.toDataURL() : null;
+      canvas.width = w;
+      const ctx = canvas.getContext('2d');
+      ctx.strokeStyle='#1e293b'; ctx.lineWidth=2; ctx.lineCap='round'; ctx.lineJoin='round';
+      workerStates[id].ctx = ctx;
+      if(snap){ const img=new Image(); img.onload=()=>ctx.drawImage(img,0,0); img.src=snap; }
+    }
+  });
+}
+
+// 修正 3：步驟切到5時，將主簽名畫布調整為實際可見寬度
+function resizeMainSigCanvas(){
+  const canvas = document.getElementById('sig-canvas');
+  const outer  = document.getElementById('sig-outer');
+  const w = outer.clientWidth;
+  if(w > 0 && canvas.width !== w){
+    const snap = sigHasData ? canvas.toDataURL() : null;
+    canvas.width = w;
+    sigCtx = canvas.getContext('2d');
+    sigCtx.strokeStyle='#1e293b'; sigCtx.lineWidth=2; sigCtx.lineCap='round'; sigCtx.lineJoin='round';
+    if(snap){ const img=new Image(); img.onload=()=>sigCtx.drawImage(img,0,0); img.src=snap; }
+  }
+}
 
 function initSig(){
   const canvas = document.getElementById('sig-canvas');
